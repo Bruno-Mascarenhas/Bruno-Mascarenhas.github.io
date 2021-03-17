@@ -1,64 +1,81 @@
 import * as THREE from './resources/three.js/r126/three.module.js';
 
 function main() {
-    const renderer = new THREE.WebGL1Renderer();
-    renderer.setSize(window.innerWidth/2,window.innerHeight/3)
-
-    const [fov, aspect, near, far] = [75, 2, 0.1, 5];
-    const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
-    camera.position.z = 2;
-
     const scene = new THREE.Scene();
+    let n = 10, k = 2, nn, nk;
 
-    const [booxWidth, boxHeight, boxDepth] = [1,1,1];
-    const geometry = new THREE.BoxGeometry(booxWidth, boxHeight, boxDepth);
+    function click(){
+        nn = parseInt(document.getElementById("n-val").value) || 10;
+        nk = parseInt(document.getElementById("k-val").value) || 2;
 
-    {
-        const color = 0xFFFFFF;
-        const intensity = 1;
-        const light = new THREE.DirectionalLight(color, intensity);
-        light.position.set(-1, 2, 4);
-        scene.add(light);
-    }
-    
-    function makeInstance(geometry, color, x){
-        const material = new THREE.MeshPhongMaterial({color});
-
-        const cube = new THREE.Mesh(geometry, material);
-        scene.add(cube);
-
-        cube.position.x = x;
-
-        return cube;
+        console.log(n, k);
     }
 
-    const cubes = [
-        makeInstance(geometry, 0x44aa88,  0),
-        makeInstance(geometry, 0x8844aa, -2),
-        makeInstance(geometry, 0xaa8844,  2)
-    ];
+    document.getElementById("submit").addEventListener("click",onclick => click());
 
-    
+    const renderer = new THREE.WebGL1Renderer();
+    renderer.setClearColor(new THREE.Color(0.0, 0.0, 0.0));
+    renderer.setSize(window.innerWidth*0.8,window.innerHeight*0.8)
     document.getElementById("WebGL-output").appendChild(renderer.domElement);
-    renderer.clear();
-	renderer.render(scene, camera);
+    
+    const camera = new THREE.OrthographicCamera( -1.2, 1.2, 1.2, -1.2, -1.0, 1.0 );
+    
+    function render() {
+        while(scene.children.length > 0){ 
+            scene.remove(scene.children[0]); 
+        }
+        const c_points = [];
+        const qtd = 360/n;
+        const pi = Math.PI;
+        
+        for(let i=0; i<=361; i+=qtd){
+            c_points.push(new THREE.Vector3(Math.cos(i*(pi/180)), Math.sin(i*(pi/180)), 0));
+        }
+
+        const c_geometry = new THREE.BufferGeometry().setFromPoints(c_points);
+        const c_material = new THREE.LineBasicMaterial( { color: 0xff0000 } );
+        const circle = new THREE.Line( c_geometry, c_material );
+        scene.add(circle);
+
+        const p_geometry = new THREE.BufferGeometry().setFromPoints(c_points);
+        const p_material = new THREE.PointsMaterial( { color: 0x0000ff, size:5 } );
+        const points = new THREE.Points( p_geometry, p_material );
+        scene.add(points)
+
+    
+        const l_points = [], l_index = [];
+        c_points.forEach((pt, idx) => {
+            let x = idx;
+            let y = (idx*k)%c_points.length;
+            l_points.push(pt);
+            l_points.push(c_points[(idx*k)%c_points.length]);
+            l_index.push(x, y)
+        });
+        
+        const l_geometry = new THREE.BufferGeometry().setFromPoints(c_points);
+        l_geometry.setIndex(l_index);
+        const l_material = new THREE.LineBasicMaterial( { color: 0xffffff } );
+        const lines = new THREE.Line( l_geometry, l_material );
+        scene.add(lines);
+
+        renderer.clear();
+        renderer.render(scene, camera);
+    }
+
+    render();
 
     function animate(time){
         time *= 0.001;
+        if(nn !== n || nk !== k){
+            n = nn;
+            k = nk;
+            render();
+        }
 
-        cubes.forEach((cube, ndx) => {
-            const speed = 1 + ndx * .1 * 10;
-            const rot = time * speed;
-
-            cube.rotation.x = rot;
-            cube.rotation.y  = rot;
-        });
-
-        renderer.render(scene, camera);
         requestAnimationFrame(animate);
     }
 
-    requestAnimationFrame(animate);
+    requestAnimationFrame(animate);   
 }
 
 main();
