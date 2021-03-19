@@ -1,4 +1,4 @@
-import * as THREE from './resources/three.js/r126/three.module.js';
+import * as THREE from '../../resources/three.js/r126/three.module.js';
 
 function main() {
     const scene = new THREE.Scene();
