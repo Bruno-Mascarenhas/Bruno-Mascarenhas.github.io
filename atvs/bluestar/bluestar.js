@@ -40,14 +40,21 @@ function main() {
 
   camera.position.z = 5;
 
+  renderer.clear();
+  renderer.render(scene, camera);
+
   function animate() {
-    requestAnimationFrame(animate);
     scene.children.forEach(function(star) {
       star.rotation.z += 0.01;
     });
+
+    renderer.clear();
     renderer.render(scene, camera);
+    
+    requestAnimationFrame(animate);
   }
-  animate();
+  
+  requestAnimationFrame(animate);
 }
 
 main();
