@@ -2,11 +2,14 @@ import * as THREE from '../../resources/three.js/r126/three.module.js';
 
 function main() {
   var scene = new THREE.Scene();
+  
+  var renderer = new THREE.WebGL1Renderer();
+  renderer.setClearColor(new THREE.Color(0.0, 0.0, 0.0));
+  renderer.setSize(window.innerWidth*0.8,window.innerHeight*0.8);
+  document.getElementById("WebGL-output").appendChild(renderer.domElement);
+  
   var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  var renderer = new THREE.WebGLRenderer();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(renderer.domElement);
-
+  
   var geometry = new THREE.Geometry();
   geometry.vertices.push(
     new THREE.Vector3(0, 0, 0), // vertex 0
