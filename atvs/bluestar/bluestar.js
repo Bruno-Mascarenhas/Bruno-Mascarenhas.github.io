@@ -2,58 +2,72 @@ import * as THREE from '../../resources/three.js/r126/three.module.js';
 
 function main() {
   const scene = new THREE.Scene();
-  
+
   const renderer = new THREE.WebGL1Renderer();
   renderer.setClearColor(new THREE.Color(0.0, 0.0, 0.0));
-  renderer.setSize(window.innerWidth*0.8,window.innerHeight*0.8);
+  renderer.setSize(window.innerWidth * 0.8, window.innerHeight * 0.8);
   document.getElementById("WebGL-output").appendChild(renderer.domElement);
-  
-  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  
-  const geometry = new THREE.Geometry();
-  geometry.vertices.push(
-    new THREE.Vector3(0, 0, 0), // vertex 0
-    new THREE.Vector3(1, 1, 0), // vertex 1
-    new THREE.Vector3(-1, 1, 0), // vertex 2
-    new THREE.Vector3(1, -1, 0), // vertex 3
-    new THREE.Vector3(-1, -1, 0) // vertex 4
-  );
 
-  geometry.faces.push(
-    new THREE.Face3(0, 1, 2), // face 0
-    new THREE.Face3(0, 3, 4), // face 1
-    new THREE.Face3(0, 2, 4), // face 2
-    new THREE.Face3(0, 1, 3) // face 3
-  );
+  const camera = new THREE.OrthographicCamera(-7, 7, 7, -7, -7, 7);
 
-  const material = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+  const geometry = new THREE.BufferGeometry();
 
-  for (var i = 0; i < 126; i++) {
-    var star = new THREE.Mesh(geometry, material);
-    star.position.set(
-      Math.random() * 800 - 400,
-      Math.random() * 800 - 400,
-      Math.random() * 800 - 400
-    );
-    scene.add(star);
+  const starPoints = [];
+  const spikes = 5;
+  const innerRadius = 0.5;
+  const outerRadius = 1;
+
+  for (let i = 0; i < spikes * 2; i++) {
+    const radius = i % 2 === 0 ? outerRadius : innerRadius;
+    const angle = (i / spikes) * Math.PI;
+    starPoints.push(radius * Math.sin(angle), radius * Math.cos(angle), 0);
   }
 
-  camera.position.z = 5;
+  // Connect the last point with the first point to close the shape
+  starPoints.push(starPoints[0], starPoints[1], starPoints[2]);
+
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(starPoints, 3));
+
+  const vertexShader = `
+        void main() {
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `;
+
+  const fragmentShader = `
+        void main() {
+            gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0); // Blue color
+        }
+    `;
+
+  const material = new THREE.ShaderMaterial({
+    vertexShader: vertexShader,
+    fragmentShader: fragmentShader
+  });
+
+  const star = new THREE.Line(geometry, material);
+  scene.add(star);
 
   renderer.clear();
   renderer.render(scene, camera);
 
-  function animate() {
-    scene.children.forEach(function(star) {
-      star.rotation.z += 0.01;
-    });
+  function animate(time) {
+    time *= 0.001;
+
+    const speedX = .1 + 6.0 * .05;
+    const speedY = .1 + 3.0 * .05;
+    const speedZ = .1 + 2.0 * .05;
+
+    star.rotation.x = time * speedX;
+    star.rotation.y = time * speedY;
+    star.rotation.z = time * speedZ;
 
     renderer.clear();
     renderer.render(scene, camera);
 
     requestAnimationFrame(animate);
   }
-  
+
   requestAnimationFrame(animate);
 }
 

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Interactive Graph</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+
+<body>
+    <h1>Select Window</h1>
+    <input type="range" id="windowSlider" min="1" max="360" value="1">
+    <span id="windowOutput">Day</span>
+
+    <h1>Select Column</h1>
+    <select id="columnSelector">
+        <!-- Options will be dynamically added using JavaScript -->
+    </select>
+
+    <div id="graph"></div>
+
+
+    <script>
+        let data = null;
+        fetch('./../resources/labmim_example.json')
+            .then(response => response.json())
+            .then(json => {
+                data = json;
+                populateColumnSelector();
+                updateGraph();
+            });
+
+        // Function to filter data based on window
+        function filterData(daysAgo) {
+            let startDate = new Date(2022, 0, 1); // January is 0-indexed
+            let endDate = new Date(2022, 6, 7, 18); // July is 6-indexed
+
+            let currentDate = new Date(endDate.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+
+            // Check that current date must be greater than start date
+            if (currentDate < startDate) {
+                currentDate = startDate;
+            }
+
+            return data.filter(item => {
+                let itemDate = new Date(item.year, item.month - 1, item.day, item.hour);
+                return itemDate >= currentDate && itemDate <= endDate;
+            });
+        }
+
+        // Function to update the graph based on user selection
+        function updateGraph() {
+            let windowSlider = document.getElementById('windowSlider');
+            let sliderValue = parseInt(windowSlider.value);
+            let windowOutput = document.getElementById('windowOutput');
+            let windowLabel = (sliderValue === 0) ? 'Day' : (sliderValue === 1) ? 'Yesterday' : sliderValue + ' days ago';
+            windowOutput.textContent = windowLabel;
+
+            let columnSelector = document.getElementById('columnSelector');
+            let selectedColumn = columnSelector.value;
+
+            let filteredData = filterData(sliderValue);
+
+            let dates = filteredData.map(item => new Date(item.year, item.month - 1, item.day, item.hour));
+            let values = filteredData.map(item => item[selectedColumn]);
+
+            let trace = {
+                x: dates,
+                y: values,
+                type: 'scatter',
+                mode: 'lines+markers'
+            };
+
+            let layout = {
+                title: 'Interactive Graph with Statistics'
+            };
+
+            Plotly.newPlot('graph', [trace], layout);
+        }
+
+        // Add event listeners for slider change and column selection change
+        document.getElementById('windowSlider').addEventListener('input', updateGraph);
+        document.getElementById('columnSelector').addEventListener('change', updateGraph);
+
+        // Dynamically populate column selector options
+        function populateColumnSelector() {
+            let columnSelector = document.getElementById('columnSelector');
+            columnSelector.innerHTML = '';
+
+            // Get the keys (headers) from the first object in the data array
+            let keys = Object.keys(data[0]).slice(4, -10);
+
+            // Add an option for each key
+            keys.forEach(column => {
+                let option = document.createElement('option');
+                option.value = column;
+                option.textContent = column;
+                columnSelector.appendChild(option);
+            });
+        }
+
+        // Call populateColumnSelector once data is loaded
+        window.addEventListener('load', populateColumnSelector);
+    </script>
+</body>
+
+</html>
