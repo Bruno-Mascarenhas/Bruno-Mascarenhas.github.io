@@ -1,26 +1,44 @@
-<html>
-	<meta http-equiv="content-type" content="text/html; charset=UTF-8">
-	
-	<head>
-		<title>Bruno Mascarenhas</title>
-		<link rel="icon" href="data:;base64,iVBORw0KGgo=">
-	</head>
-	
-	<body>
-		<!--
-		<h1>Under Maintenance!</h1>
-        <div>
-            	<img id="ayaya" src="./resources/ayaya.gif" alt="Ayaya!"/>
-        </div>  
-		-->
-		
-		<a href="./atvs/Cubes/index.html">Cubes</a> <br/>
-		<a href="./atvs/Atv0/index.html">Playing w/ Patterns</a> <br/>
-		<a href="./atvs/Atv1/index.html">Tranguloid Trefoil</a> <br/>
-		<a href="./atvs/bluestar/index.html">A Blue Star</a> <br/>
-		<a href="./labmim/index.html">LabMiM Example Graph</a> <br/>
-		
-		
+<!DOCTYPE html>
+<html lang="en">
 
-	</body>
+<head>
+	<meta charset="UTF-8">
+	<title>Bruno Mascarenhas</title>
+	<link rel="icon" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/icons/star-fill.svg" type="image/svg+xml">
+	<link rel="stylesheet" href="styles.css">
+	<script type="module" src="./resources/maintenance.js" defer></script>
+</head>
+
+<body>
+	<header id="headerContent">
+		<h1>Welcome to Bruno Mascarenhas' Interactive Site</h1>
+		<button id="toggleMaintenance">Toggle Maintenance Mode</button>
+	</header>
+
+	<nav id="navContent">
+		<ul>
+			<li><a href="./atvs/Cubes/index.html">Cubes</a></li>
+			<li><a href="./atvs/Atv0/index.html">Playing w/ Patterns</a></li>
+			<li><a href="./atvs/Atv1/index.html">Tranguloid Trefoil</a></li>
+			<li><a href="./atvs/bluestar/index.html">A Blue Star</a></li>
+			<li><a href="./labmim/index.html">LabMiM Example Graph</a></li>
+			<li><a href="./birthday/index.html">Happy Birthday</a></li>
+		</ul>
+	</nav>
+
+	<main>
+		<div id="content">
+			<p>Explore the interactive experiences on this site!</p>
+		</div>
+
+		<div id="maintenance" class="hidden">
+			<img id="ayaya" src="./resources/ayaya.gif" alt="Under Maintenance!" />
+		</div>
+	</main>
+
+	<footer id="footerContent">
+		<p>&copy; Bruno Mascarenhas. None rights reserved.</p>
+	</footer>
+</body>
+
 </html>

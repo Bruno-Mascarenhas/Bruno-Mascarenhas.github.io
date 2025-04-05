@@ -1,21 +1,56 @@
-<html>
-	<meta http-equiv="content-type" content="text/html; charset=UTF-8">
-	
-	<head>
-		<title>Patterns!</title>
-		<script type=module src="atv0.js"></script>
-		<link rel="icon" href="data:;base64,iVBORw0KGgo=">
-	</head>
-	
-	<body>
-		<h5>Playing With Patterns, Suggestions: (n, k) (200,2) (200, 7) (350, 141) (400, 37) (400, 51) </h5>
-		<label for="n">N:</label>
-		<input type="number" name="n" id="n-val" min="8" max="1024" placeholder="10">
-		<label for="k">K:</label>
-		<input type="number" name="k" min="2" max="200" id="k-val" placeholder="2">
-		<button id="submit">Run</button>
-		<br/>
-		<div id="WebGL-output" ></div>
-		<br/>
-	</body>
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<title>Patterns!</title>
+	<link rel="icon" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/icons/star-fill.svg" type="image/svg+xml">
+	<link rel="stylesheet" href="../../styles.css">
+	<script type="module" src="../../resources/maintenance.js" defer></script>
+	<script type="module" src="atv0.js"></script>
+</head>
+
+<body>
+	<header id="headerContent">
+		<h1>Playing With Patterns!</h1>
+		<button id="toggleMaintenance">Toggle Maintenance Mode</button>
+	</header>
+
+	<nav id="navContent">
+		<ul>
+			<li><a href="../Cubes/index.html">Cubes</a></li>
+			<li><a href="index.html">Patterns</a></li>
+			<li><a href="../Atv1/index.html">Tranguloid Trefoil</a></li>
+			<li><a href="../bluestar/index.html">A Blue Star</a></li>
+			<li><a href="../../labmim/index.html">LabMiM Example Graph</a></li>
+			<li><a href="../../birthday/index.html">Happy Birthday</a></li>
+		</ul>
+	</nav>
+
+	<main>
+		<div id="content">
+			<h5>Playing With Patterns</h5>
+			<p>Suggestions: (n, k) (200,2), (200,7), (350,141), (400,37), (400,51)</p>
+			<div class="input-group">
+				<label for="n-val">N:</label>
+				<input type="number" id="n-val" name="n" min="8" max="1024" placeholder="10">
+			</div>
+			<div class="input-group">
+				<label for="k-val">K:</label>
+				<input type="number" id="k-val" name="k" min="2" max="200" placeholder="2">
+			</div>
+			<button id="submit">Run</button>
+			<div id="WebGL-output"></div>
+		</div>
+
+		<div id="maintenance" class="hidden">
+			<img id="ayaya" src="../../resources/ayaya.gif" alt="Under Maintenance!" />
+		</div>
+	</main>
+
+	<footer id="footerContent">
+		<p>&copy; Bruno Mascarenhas. None rights reserved.</p>
+	</footer>
+</body>
+
 </html>
