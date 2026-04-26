@@ -1,29 +1,29 @@
 /**
  * VARIABLES_CONFIG.js
  *
- * Configuração centralizada de variáveis meteorológicas.
- * Adicione novas variáveis aqui para expandir a funcionalidade do sistema.
+ * Centralized configuration of meteorological variables.
+ * Add new variables here to expand system functionality.
  *
- * Cada variável contém:
- * - id: Identificador do arquivo (ex: SWDOWN, POT_EOLICO_100M)
- * - label: Nome exibido na UI
- * - unit: Unidade de medida
- * - colormap: Tipo de paleta de cores
- * - colors: Array de cores hex em gradiente
- * - specificInfo: Função que retorna informações específicas da variável
- *   * Agora recebe: (value, allValues = {})
- *   * value: Valor da variável atual
- *   * allValues: Objeto com valores de TODAS as variáveis para a mesma célula/data
- *     Exemplo: { temperature: { value: 25, label: '...', unit: '°C' }, ... }
- *   * Permite cálculos multivariáveis (ex: produção solar com ajuste de temperatura)
+ * Each variable contains:
+ * - id: File identifier (e.g., SWDOWN, POT_EOLICO_100M)
+ * - label: Name displayed in the UI
+ * - unit: Measurement unit
+ * - colormap: Color palette type
+ * - colors: Array of hex colors for the gradient
+ * - specificInfo: Function returning variable-specific details
+ *   * Signature: (value, allValues = {})
+ *   * value: Current variable value
+ *   * allValues: Object containing values for ALL variables at the same cell/date
+ *     Example: { temperature: { value: 25, label: '...', unit: '°C' }, ... }
+ *   * Enables multivariate calculations (e.g., solar production with temp adjustments)
  */
 
 /**
- * Helper para obter parâmetros customizados ou usar padrão
- * @param {string} variableType - Tipo da variável (solar, eolico, etc)
- * @param {string} paramName - Nome do parâmetro
- * @param {number} defaultValue - Valor padrão se não customizado
- * @returns {number} Valor customizado ou padrão
+ * Helper to retrieve custom parameters or fallback to default
+ * @param {string} variableType - Variable type (e.g., solar, eolico)
+ * @param {string} paramName - Parameter name
+ * @param {number} defaultValue - Default value if not customized
+ * @returns {number} Custom or default value
  */
 function getParameter(variableType, paramName, defaultValue) {
   if (typeof app === "undefined" || !app || !app.getCustomParameter) {
@@ -36,11 +36,25 @@ function getParameter(variableType, paramName, defaultValue) {
       return customValue;
     }
   } catch (e) {
-    console.warn(`Erro ao obter parâmetro: ${e.message}`);
+    console.warn(`Error getting parameter: ${e.message}`);
   }
 
   return defaultValue;
 }
+
+const TEMPERATURE_COLORS = ["#0000ff", "#00ffff", "#00ff00", "#ffff00", "#ff0000"];
+const PRESSURE_COLORS = [
+  "#a50026",
+  "#d73027",
+  "#f46d43",
+  "#fdae61",
+  "#fee090",
+  "#e0f3f8",
+  "#abd9e9",
+  "#74add1",
+  "#4575b4",
+  "#313695",
+];
 
 const VARIABLES_CONFIG = {
   solar: {
@@ -61,7 +75,6 @@ const VARIABLES_CONFIG = {
       "#691009",
     ],
     specificInfo: (value, allValues = {}) => {
-      // Se valor ausente, retornar aviso
       if (value === null || value === undefined) {
         return {
           title: "Geração Fotovoltaica",
@@ -120,7 +133,6 @@ const VARIABLES_CONFIG = {
     colormap: "Blues",
     colors: ["#f7fbff", "#deebf7", "#c6dbef", "#9ecae1", "#6baed6", "#3182bd", "#08519c"],
     specificInfo: (value, allValues = {}) => {
-      // Se valor ausente ou ausente flag ativo, retornar aviso
       if (value === null || value === undefined || allValues.eolico?.ausente) {
         return {
           title: "Geração Eólica",
@@ -137,12 +149,11 @@ const VARIABLES_CONFIG = {
 
       const tempValue = allValues.temperature?.value || 15;
 
-      // Usar parâmetros customizados ou padrão
       const airDensity = getParameter("eolico", "airDensity", 1.225);
       const rotorDiameter = getParameter("eolico", "rotorDiameter", 40);
-      const Cp = getParameter("eolico", "powerCoefficient", 0.4);
+      const Cp = getParameter("eolico", "Cp", getParameter("eolico", "powerCoefficient", 0.4));
 
-      const densityOfAir = airDensity * (288 / (273 + tempValue)); // Densidade corrigida por temperatura
+      const densityOfAir = airDensity * (288 / (273 + tempValue));
       const rotorArea = Math.PI * Math.pow(rotorDiameter / 2, 2);
 
       return {
@@ -175,9 +186,8 @@ const VARIABLES_CONFIG = {
     label: "Temperatura (2m)",
     unit: "°C",
     colormap: "hot_r",
-    colors: ["#0000ff", "#00ffff", "#00ff00", "#ffff00", "#ff0000"],
+    colors: TEMPERATURE_COLORS,
     specificInfo: (value, allValues = {}) => {
-      // Se valor ausente ou ausente flag ativo, retornar aviso
       if (value === null || value === undefined || allValues.temperature?.ausente) {
         return {
           title: "Informações Térmicas",
@@ -192,11 +202,9 @@ const VARIABLES_CONFIG = {
         };
       }
 
-      // Usar umidade se disponível para cálculo de sensação térmica
       const humidityValue = allValues.humidity?.value || 60;
       const windValue = allValues.wind?.value || 2;
 
-      // Calcular sensação térmica considerando umidade
       const feelsLike = getTemperatureFeelsLike(value, humidityValue, windValue);
       const heatIndex = getHeatIndex(value, humidityValue);
 
@@ -230,22 +238,10 @@ const VARIABLES_CONFIG = {
     label: "Pressão Atmosférica",
     unit: "hPa",
     colormap: "RdBu_r",
-    colors: [
-      "#a50026",
-      "#d73027",
-      "#f46d43",
-      "#fdae61",
-      "#fee090",
-      "#e0f3f8",
-      "#abd9e9",
-      "#74add1",
-      "#4575b4",
-      "#313695",
-    ],
+    colors: PRESSURE_COLORS,
     useDynamicScale: true,
     normalValue: 1013,
     specificInfo: (value, allValues = {}) => {
-      // Se valor ausente ou ausente flag ativo, retornar aviso
       if (value === null || value === undefined || allValues.pressure?.ausente) {
         return {
           title: "Condições Atmosféricas",
@@ -259,12 +255,6 @@ const VARIABLES_CONFIG = {
           ],
         };
       }
-
-      const tempValue = allValues.temperature?.value || 15;
-      const humidityValue = allValues.humidity?.value || 60;
-
-      // Calcular ponto de orvalho (aprox)
-      const dewpoint = tempValue - (100 - humidityValue) / 5;
 
       return {
         title: "Condições Atmosféricas",
@@ -294,10 +284,9 @@ const VARIABLES_CONFIG = {
     id: "VAPOR",
     label: "Umidade Relativa",
     unit: "%",
-    colormap: "YlGnBu",
-    colors: ["#ffffd9", "#edf8b1", "#c7e9b4", "#7fbc41", "#365f0f"],
+    colormap: "RdBu_r",
+    colors: PRESSURE_COLORS,
     specificInfo: (value, allValues = {}) => {
-      // Se valor ausente ou ausente flag ativo, retornar aviso
       if (value === null || value === undefined || allValues.humidity?.ausente) {
         return {
           title: "Condições de Umidade",
@@ -311,11 +300,6 @@ const VARIABLES_CONFIG = {
           ],
         };
       }
-
-      const tempValue = allValues.temperature?.value || 20;
-
-      // Calcular ponto de orvalho
-      const dewpoint = tempValue - (100 - value) / 5;
 
       return {
         title: "Condições de Umidade",
@@ -345,10 +329,9 @@ const VARIABLES_CONFIG = {
     id: "RAIN",
     label: "Precipitação",
     unit: "mm",
-    colormap: "Blues_rev",
-    colors: ["#f7fbff", "#deebf7", "#9ecae1", "#3182bd", "#08519c", "#08306b"],
+    colormap: "hot_r",
+    colors: TEMPERATURE_COLORS,
     specificInfo: (value, allValues = {}) => {
-      // Se valor ausente ou ausente flag ativo, retornar aviso
       if (value === null || value === undefined || allValues.rain?.ausente) {
         return {
           title: "Previsão de Precipitação",
@@ -362,9 +345,6 @@ const VARIABLES_CONFIG = {
           ],
         };
       }
-
-      const tempValue = allValues.temperature?.value || 20;
-      const humidityValue = allValues.humidity?.value || 70;
 
       return {
         title: "Previsão de Precipitação",
@@ -397,7 +377,6 @@ const VARIABLES_CONFIG = {
     colormap: "PuBu",
     colors: ["#f7fbff", "#deebf7", "#c6dbef", "#9ecae1", "#6baed6", "#3182bd", "#08519c"],
     specificInfo: (value, allValues = {}) => {
-      // Se valor ausente ou ausente flag ativo, retornar aviso
       if (value === null || value === undefined || allValues.wind?.ausente) {
         return {
           title: "Informações do Vento",
@@ -440,8 +419,8 @@ const VARIABLES_CONFIG = {
     id: "HFX",
     label: "Calor Sensível",
     unit: "W/m²",
-    colormap: "jet",
-    colors: ["#000080", "#0000ff", "#00ffff", "#00ff00", "#ffff00", "#ff0000", "#800000"],
+    colormap: "hot_r",
+    colors: TEMPERATURE_COLORS,
     specificInfo: (value, allValues = {}) => {
       if (value === null || value === undefined || allValues.hfx?.ausente) {
         return {
@@ -485,8 +464,8 @@ const VARIABLES_CONFIG = {
     id: "LH",
     label: "Calor Latente",
     unit: "W/m²",
-    colormap: "jet",
-    colors: ["#000080", "#0000ff", "#00ffff", "#00ff00", "#ffff00", "#ff0000", "#800000"],
+    colormap: "hot",
+    colors: [...TEMPERATURE_COLORS].reverse(),
     specificInfo: (value, allValues = {}) => {
       if (value === null || value === undefined || allValues.lh?.ausente) {
         return {
@@ -525,66 +504,7 @@ const VARIABLES_CONFIG = {
       };
     },
   },
-
-  // weibull: {
-  //     id: 'K_WEIB',
-  //     label: 'Fator K de Weibull',
-  //     unit: '-',
-  //     colormap: 'jet',
-  //     colors: ['#000080', '#0000ff', '#00ffff', '#00ff00', '#ffff00', '#ff0000', '#800000'],
-  //     specificInfo: (value, allValues = {}) => {
-  //         // Se valor ausente ou ausente flag ativo, retornar aviso
-  //         if (value === null || value === undefined || allValues.weibull?.ausente) {
-  //             return {
-  //                 title: 'Parâmetro de Distribuição Weibull',
-  //                 items: [
-  //                     {
-  //                         label: 'Status',
-  //                         value: '⚠ Dados Indisponíveis',
-  //                         unit: '',
-  //                         icon: 'fa-exclamation-triangle'
-  //                     }
-  //                 ]
-  //             };
-  //         }
-
-  //         return {
-  //             title: 'Parâmetro de Distribuição Weibull',
-  //             items: [
-  //                 {
-  //                     label: 'Valor do Fator K',
-  //                     value: value.toFixed(2),
-  //                     icon: 'fa-chart-line'
-  //                 },
-  //                 {
-  //                     label: 'Características do Vento',
-  //                     value: value > 2 ? 'Constante' : (value > 1.5 ? 'Moderado' : 'Variável'),
-  //                     icon: 'fa-wind'
-  //                 },
-  //                 {
-  //                     label: 'Potencial Eólico',
-  //                     value: value > 2 ? 'Previsível' : 'Irregular',
-  //                     icon: 'fa-star'
-  //                 }
-  //             ]
-  //         }
-  //     }
-  // },
 };
-
-/**
- * FUNÇÕES AUXILIARES PARA INTERPRETAÇÃO DE DADOS
- */
-
-function getValueOrDefault(value, label = "Valor ausente") {
-  /**
-   * Retorna o valor se disponível, senão retorna uma mensagem de valor ausente
-   */
-  if (value === null || value === undefined) {
-    return label;
-  }
-  return value;
-}
 
 function getWindCategory(speed) {
   if (speed < 2) return "Muito Fraco";
@@ -619,11 +539,8 @@ function getWindDirection(angle) {
 }
 
 function getTemperatureFeelsLike(temperatureC, humidity, windSpeedMs) {
-  console.log(`Calculando sensação térmica para T=${temperatureC}°C, U=${humidity}%, V=${windSpeedMs}m/s`);
-
-  // Heat Index (NOAA)
   if (temperatureC >= 26.7 && humidity >= 40) {
-    const T = (temperatureC * 9) / 5 + 32; // °C → °F
+    const T = (temperatureC * 9) / 5 + 32;
     const RH = humidity;
 
     const HI_F =
@@ -637,47 +554,40 @@ function getTemperatureFeelsLike(temperatureC, humidity, windSpeedMs) {
       0.00085282 * T * RH * RH -
       0.00000199 * T * T * RH * RH;
 
-    return ((HI_F - 32) * 5) / 9; // °F → °C
+    return ((HI_F - 32) * 5) / 9;
   }
 
-  // Wind Chill (Canadense)
   if (temperatureC <= 10 && windSpeedMs >= 1.34) {
-    const v = windSpeedMs * 3.6; // m/s → km/h
+    const v = windSpeedMs * 3.6;
 
     return 13.12 + 0.6215 * temperatureC - 11.37 * Math.pow(v, 0.16) + 0.3965 * temperatureC * Math.pow(v, 0.16);
   }
 
-  // Faixa neutra
   return temperatureC;
 }
 
 function getHeatIndex(temperatureC, humidity) {
-  // Fora da faixa típica de calor, retorna a própria temperatura
   if (temperatureC < 26 || humidity < 40) {
     return temperatureC;
   }
 
-  // Pressão de vapor (hPa)
   const e = (humidity / 100) * 6.105 * Math.exp((17.27 * temperatureC) / (237.7 + temperatureC));
 
-  // Aproximação clássica do Heat Index em °C
   const heatIndex = temperatureC + 0.33 * e - 0.7;
 
   return heatIndex;
 }
 
 function estimateSolarGeneration(irradiance, panelArea = 10, efficiency = 0.18) {
-  // Estima geração solar em kW
   return (irradiance * panelArea * efficiency) / 1000;
 }
 
 function estimateWindGeneration(powerDensity, turbineArea = 500) {
-  // Estima geração eólica em kW
   return (powerDensity * turbineArea) / 1000;
 }
 
 /**
- * Exportar todas as configurações
+ * Export all configurations
  */
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {

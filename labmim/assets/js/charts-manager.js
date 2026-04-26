@@ -1,12 +1,8 @@
 /**
  * CHARTS_MANAGER.js
  *
- * Gerenciador de gráficos temporais para o mapa interativo.
+ * Time series charts manager for the interactive map
  *
- * OTIMIZAÇÕES:
- *   - loadTimeSeriesData: usa AbortController para cancelar requests obsoletos
- *   - Modal persistente: reutiliza instâncias do Chart.js (.update()) sem destroy/recreate
- *   - Sidebar livre de gráficos, mantendo apenas informações textuais rápidas
  */
 
 class ChartsManager {
@@ -14,15 +10,28 @@ class ChartsManager {
     this.app = app;
     this.charts = new Map();
     this.timeSeriesData = {};
+    this.timeSeriesCache = new Map();
     this.abortController = null;
+    this.ui = this._cacheUIElements();
 
     this._setupModalListeners();
   }
 
+  _cacheUIElements() {
+    return {
+      modal: document.getElementById("timeSeriesModal"),
+      title: document.getElementById("timeSeriesModalTitle"),
+      closeBtn: document.getElementById("timeSeriesCloseBtn"),
+      exportBtn: document.getElementById("timeSeriesExportBtn"),
+      loadingOverlay: document.getElementById("timeSeriesLoadingOverlay"),
+      chartValueCanvas: document.getElementById("chartCanvasValue"),
+      chartEnergyCanvas: document.getElementById("chartCanvasEnergy"),
+      chartEnergyContainer: document.getElementById("chartContainerEnergy"),
+    };
+  }
+
   _setupModalListeners() {
-    const closeBtn = document.getElementById("timeSeriesCloseBtn");
-    const exportBtn = document.getElementById("timeSeriesExportBtn");
-    const modal = document.getElementById("timeSeriesModal");
+    const { closeBtn, exportBtn, modal } = this.ui;
 
     if (closeBtn) closeBtn.addEventListener("click", () => this.closeModal());
     if (exportBtn) exportBtn.addEventListener("click", () => this.exportCurrentData());
@@ -30,12 +39,13 @@ class ChartsManager {
       modal.addEventListener("click", (e) => {
         if (e.target === modal) this.closeModal();
       });
+    window.addEventListener("labmim-theme-change", () => this.refreshChartTheme());
   }
 
-  // ─── Carregamento de Dados ────────────────────────────────────────────────
+  // ─── Data Loading ─────────────────────────────────────────────────────────
 
-  async loadTimeSeriesData(lat, lng, domain) {
-    // Abortar request anterior se houver
+  async loadTimeSeriesData(selectedCell, domain, variableType) {
+    // Abort previous request if it exists
     if (this.abortController) {
       this.abortController.abort();
     }
@@ -43,57 +53,21 @@ class ChartsManager {
     const signal = this.abortController.signal;
 
     try {
-      const cellIndex = await this.findCellIndex(lat, lng, domain, signal);
+      const lat = selectedCell?.lat;
+      const lng = selectedCell?.lng;
+      const cellIndex = Number.isInteger(selectedCell?.cellIndex)
+        ? selectedCell.cellIndex
+        : await this.findCellIndex(lat, lng, domain, signal);
       if (cellIndex === null) return {};
 
       const timeSeriesData = {};
-      const variableKeys = Object.keys(VARIABLES_CONFIG);
+      const variableKeys = this._getRequiredVariableKeys(variableType);
 
-      // Processar variáveis em paralelo
       await Promise.all(
         variableKeys.map(async (variableKey) => {
-          const config = VARIABLES_CONFIG[variableKey];
-          if (!config?.id) return;
-
-          let variableId = config.id;
-          if (variableKey === "eolico" && this.app.windHeight) {
-            if (this.app.windHeight === 100) variableId = config.id_100m;
-            if (this.app.windHeight === 150) variableId = config.id_150m;
-          }
-
-          const BATCH_SIZE = 10;
-          const allResults = [];
-          for (let start = 0; start < 73; start += BATCH_SIZE) {
-            if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-            const batch = Array.from({ length: Math.min(BATCH_SIZE, 73 - start) }, (_, j) => {
-              const hour = start + j + 1;
-              return this._fetchHourJson(variableId, domain, hour, signal)
-                .then((data) => {
-                  if (data?.values && Array.isArray(data.values)) {
-                    const cellValue = data.values[cellIndex];
-                    if (cellValue != null) {
-                      return {
-                        hour,
-                        value: cellValue,
-                        timestamp: this._timestampForHour(hour, data),
-                      };
-                    }
-                  }
-                  return null;
-                })
-                .catch((err) => {
-                  if (err.name === "AbortError") throw err;
-                  return null;
-                });
-            });
-            const batchResults = await Promise.all(batch);
-            allResults.push(...batchResults);
-          }
-
-          const hourlyData = allResults.filter(Boolean);
-
-          if (hourlyData.length > 0) {
-            timeSeriesData[variableKey] = { config, data: hourlyData };
+          const result = await this._loadVariableSeries(variableKey, domain, cellIndex, signal);
+          if (result?.data?.length) {
+            timeSeriesData[variableKey] = result;
           }
         })
       );
@@ -104,9 +78,9 @@ class ChartsManager {
       return timeSeriesData;
     } catch (error) {
       if (error.name === "AbortError") {
-        console.log("[Charts] Request cancelado pelo usuário.");
+        return {};
       } else {
-        console.error("[Charts] Erro ao carregar série temporal:", error);
+        console.error("[Charts] Error loading time series:", error);
       }
       return {};
     }
@@ -128,7 +102,7 @@ class ChartsManager {
           const d = this._quickDist(lat, lng, c.lat, c.lng);
           if (d < minDist) {
             minDist = d;
-            closestIndex = i;
+            closestIndex = this.app?.getCellIndexForLayer?.(layer, i) ?? i;
           }
         });
         return closestIndex;
@@ -146,45 +120,42 @@ class ChartsManager {
           const d = this._quickDist(lat, lng, c.lat, c.lng);
           if (d < minDist) {
             minDist = d;
-            closestIndex = i;
+            closestIndex = Number.isInteger(feature.properties?.linear_index) ? feature.properties.linear_index : i;
           }
         }
       });
       return closestIndex;
     } catch (error) {
-      if (error.name !== "AbortError") console.error("[Charts] Erro ao encontrar célula:", error);
+      if (error.name !== "AbortError") console.error("[Charts] Error finding cell:", error);
       throw error;
     }
   }
 
-  // ─── Renderização Modal ───────────────────────────────────────────────────
+  // ─── Modal Rendering ──────────────────────────────────────────────────────
 
   openModal() {
-    const modal = document.getElementById("timeSeriesModal");
-    if (modal) modal.style.display = "flex";
+    if (this.ui.modal) this.ui.modal.style.display = "flex";
   }
 
   closeModal() {
-    const modal = document.getElementById("timeSeriesModal");
-    if (modal) modal.style.display = "none";
+    if (this.ui.modal) this.ui.modal.style.display = "none";
     if (this.abortController) {
       this.abortController.abort();
       this.abortController = null;
     }
   }
 
-  renderChartsForVariable(variableType, selectedCellData) {
+  renderChartsForVariable(variableType) {
     const config = VARIABLES_CONFIG[variableType];
     if (!config) return;
 
-    document.getElementById("timeSeriesModalTitle").innerHTML =
-      `<i class="fas fa-${this._getIcon(variableType, "value")}"></i> Série Temporal: ${config.label}`;
+    this.ui.title.innerHTML = `<i class="fas fa-${this._getIcon(variableType, "value")}"></i> Série Temporal: ${config.label}`;
 
     const isSolarOrWind = variableType === "solar" || variableType === "eolico";
 
     this._updateOrCreateChart(variableType, "value", "chartCanvasValue");
 
-    const energyContainer = document.getElementById("chartContainerEnergy");
+    const energyContainer = this.ui.chartEnergyContainer;
     if (isSolarOrWind) {
       energyContainer.style.display = "block";
       this._updateOrCreateChart(variableType, "energy", "chartCanvasEnergy");
@@ -204,9 +175,10 @@ class ChartsManager {
     this.charts.forEach((chart) => chart?.destroy());
     this.charts.clear();
     this.timeSeriesData = {};
+    this.timeSeriesCache.clear();
   }
 
-  // ─── Internos ────────────────────────────────────────────────────────────
+  // ─── Internal Methods ─────────────────────────────────────────────────────
 
   _updateOrCreateChart(variableType, chartType, canvasId) {
     if (!this.timeSeriesData?.[variableType]) return;
@@ -220,39 +192,83 @@ class ChartsManager {
       color: chartColor,
     } = this._prepareChartData(variableType, chartType, config, timeData);
 
-    // Otimização: Cache das datas parseadas
     const labels = timeData.map((d) => {
-      if (!d._formattedTime) {
-        d._formattedTime = new Date(d.timestamp).toLocaleTimeString("pt-BR", {
+      if (!d._formattedLabel) {
+        d._formattedLabel = new Date(d.timestamp).toLocaleString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
           hour: "2-digit",
           minute: "2-digit",
         });
       }
-      return d._formattedTime;
+      return d._formattedLabel;
     });
 
     let chartInstance = this.charts.get(canvasId);
 
     if (chartInstance) {
-      // Atualizar in-place (Performance Win)
       chartInstance.data.labels = labels;
       chartInstance.data.datasets[0].data = chartData;
       chartInstance.data.datasets[0].label = chartLabel;
       chartInstance.data.datasets[0].borderColor = chartColor;
       chartInstance.data.datasets[0].backgroundColor = `${chartColor}20`;
+      chartInstance.data.datasets[0].pointRadius = chartData.length > 96 ? 0 : 3;
       chartInstance.data.datasets[0].pointBackgroundColor = chartColor;
       chartInstance.options.scales.y.title.text = chartUnit;
       chartInstance.options.plugins.tooltip.callbacks.label = (ctx) => `${ctx.parsed.y.toFixed(2)} ${chartUnit}`;
-      chartInstance.update();
+      this._applyChartTheme(chartInstance, chartColor);
+      chartInstance.update("none");
     } else {
-      // Criar novo se não existe
-      const ctx = document.getElementById(canvasId).getContext("2d");
+      const ctx = this._getChartCanvas(canvasId)?.getContext("2d");
+      if (!ctx) return;
       chartInstance = new Chart(ctx, this._buildChartConfig(chartData, labels, chartLabel, chartColor, chartUnit));
       this.charts.set(canvasId, chartInstance);
     }
   }
 
+  _getChartCanvas(canvasId) {
+    if (canvasId === "chartCanvasValue") return this.ui.chartValueCanvas;
+    if (canvasId === "chartCanvasEnergy") return this.ui.chartEnergyCanvas;
+    return document.getElementById(canvasId);
+  }
+
+  refreshChartTheme() {
+    this.charts.forEach((chart) => {
+      const chartColor = chart.data.datasets[0]?.borderColor || "#667eea";
+      this._applyChartTheme(chart, chartColor);
+      chart.update("none");
+    });
+  }
+
+  _applyChartTheme(chart, accentColor) {
+    const theme = this._getThemeColors();
+    chart.options.plugins.legend.labels.color = theme.legendText;
+    chart.options.plugins.tooltip.backgroundColor = theme.tooltipBg;
+    chart.options.plugins.tooltip.titleColor = theme.tooltipText;
+    chart.options.plugins.tooltip.bodyColor = theme.tooltipText;
+    chart.options.plugins.tooltip.borderColor = accentColor;
+    chart.options.scales.y.ticks.color = theme.textSecondary;
+    chart.options.scales.x.ticks.color = theme.textSecondary;
+    chart.options.scales.y.grid.color = theme.grid;
+    chart.options.scales.x.grid.color = theme.grid;
+    chart.options.scales.y.title.color = theme.textSecondary;
+  }
+
+  _getThemeColors() {
+    const rootStyles = getComputedStyle(document.documentElement);
+    const bodyStyles = getComputedStyle(document.body);
+    return {
+      textPrimary: rootStyles.getPropertyValue("--text-primary").trim() || bodyStyles.color || "#fff",
+      textSecondary: rootStyles.getPropertyValue("--text-secondary").trim() || "#888",
+      legendText: document.documentElement.classList.contains("dark-theme") ? "#fff" : "#666",
+      grid: rootStyles.getPropertyValue("--chart-grid-color").trim() || "#f0f0f0",
+      tooltipBg: "rgba(18, 18, 18, 0.96)",
+      tooltipText: "#fff",
+    };
+  }
+
   _buildChartConfig(chartData, labels, chartLabel, chartColor, chartUnit) {
+    const theme = this._getThemeColors();
     return {
       type: "line",
       data: {
@@ -266,7 +282,7 @@ class ChartsManager {
             borderWidth: 3,
             fill: true,
             tension: 0.4,
-            pointRadius: 4,
+            pointRadius: chartData.length > 96 ? 0 : 3,
             pointBackgroundColor: chartColor,
             pointBorderColor: "#fff",
             pointBorderWidth: 2,
@@ -284,15 +300,15 @@ class ChartsManager {
             position: "top",
             labels: {
               font: { size: 14 },
-              color: "#666",
+              color: theme.legendText,
               padding: 15,
               usePointStyle: true,
             },
           },
           tooltip: {
-            backgroundColor: "rgba(0,0,0,0.8)",
-            titleColor: "#fff",
-            bodyColor: "#fff",
+            backgroundColor: theme.tooltipBg,
+            titleColor: theme.tooltipText,
+            bodyColor: theme.tooltipText,
             borderColor: chartColor,
             borderWidth: 2,
             padding: 12,
@@ -306,21 +322,21 @@ class ChartsManager {
           y: {
             beginAtZero: false,
             ticks: {
-              color: "#888",
+              color: theme.textSecondary,
               font: { size: 13 },
               callback: (v) => v.toFixed(1),
             },
-            grid: { color: "#f0f0f0", drawBorder: false },
+            grid: { color: theme.grid, drawBorder: false },
             title: {
               display: true,
               text: chartUnit,
               font: { size: 13, weight: "bold" },
-              color: "#666",
+              color: theme.textSecondary,
             },
           },
           x: {
-            ticks: { color: "#888", font: { size: 13 } },
-            grid: { color: "#f0f0f0", drawBorder: false },
+            ticks: { color: theme.textSecondary, font: { size: 13 }, maxTicksLimit: 12 },
+            grid: { color: theme.grid, drawBorder: false },
           },
         },
       },
@@ -339,11 +355,20 @@ class ChartsManager {
 
     const unit = variableType === "solar" ? "Wh/m²" : "kWh";
     const color = variableType === "solar" ? "#FDB462" : "#80B1D3";
+    const temperatureSeries = this.timeSeriesData?.temperature?.data || [];
+    const temperatureByHour = new Map(temperatureSeries.map((entry) => [entry.hour, entry.value]));
     const data = timeData.map((d) => {
       try {
-        const info = config.specificInfo(d.value, {});
+        const info = config.specificInfo(d.value, {
+          [variableType]: { value: d.value },
+          temperature: { value: temperatureByHour.get(d.hour) },
+        });
         const item = info?.items?.find(
-          (it) => it.label?.includes("Produção Energética") || it.label?.includes("kWh") || it.label?.includes("Wh")
+          (it) =>
+            it.label?.includes("Produção Energética") ||
+            it.label?.includes("Energy Production") ||
+            it.label?.includes("kWh") ||
+            it.label?.includes("Wh")
         );
         if (item?.value) {
           const num = parseFloat(
@@ -353,11 +378,82 @@ class ChartsManager {
           );
           return isNaN(num) ? 0 : num;
         }
-      } catch (_) {}
+      } catch {
+        return 0;
+      }
       return 0;
     });
 
     return { data, label: "Produção Energética Acumulada (1h)", unit, color };
+  }
+
+  _getRequiredVariableKeys(variableType) {
+    const keys = new Set();
+    if (VARIABLES_CONFIG[variableType]?.id) keys.add(variableType);
+    if (variableType === "solar" || variableType === "eolico") keys.add("temperature");
+    return [...keys];
+  }
+
+  async _loadVariableSeries(variableKey, domain, cellIndex, signal) {
+    const config = VARIABLES_CONFIG[variableKey];
+    if (!config?.id) return null;
+
+    const variableId = this._getVariableId(variableKey, config);
+    const maxHour = this._getAvailableHourCount();
+    const cacheKey = `${domain}:${variableId}:${cellIndex}:${maxHour}`;
+    const cached = this.timeSeriesCache.get(cacheKey);
+    if (cached) return cached;
+
+    const BATCH_SIZE = 12;
+    const allResults = [];
+    for (let start = 1; start <= maxHour; start += BATCH_SIZE) {
+      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+      const batchEnd = Math.min(start + BATCH_SIZE - 1, maxHour);
+      const batch = [];
+      for (let hour = start; hour <= batchEnd; hour++) {
+        batch.push(this._fetchHourValue(variableId, domain, hour, cellIndex, signal));
+      }
+      const batchResults = await Promise.all(batch);
+      allResults.push(...batchResults);
+    }
+
+    const result = { config, data: allResults.filter(Boolean) };
+    this.timeSeriesCache.set(cacheKey, result);
+    return result;
+  }
+
+  async _fetchHourValue(variableId, domain, hour, cellIndex, signal) {
+    try {
+      const data = await this._fetchHourJson(variableId, domain, hour, signal);
+      if (data?.values && Array.isArray(data.values)) {
+        const cellValue = data.values[cellIndex];
+        if (cellValue != null) {
+          return {
+            hour,
+            value: cellValue,
+            timestamp: this._timestampForHour(hour, data),
+          };
+        }
+      }
+      return null;
+    } catch (err) {
+      if (err.name === "AbortError") throw err;
+      return null;
+    }
+  }
+
+  _getVariableId(variableKey, config) {
+    if (variableKey === "eolico" && this.app?.windHeight) {
+      if (this.app.windHeight === 100) return config.id_100m;
+      if (this.app.windHeight === 150) return config.id_150m;
+    }
+    return config.id;
+  }
+
+  _getAvailableHourCount() {
+    const sliderMax = parseInt(this.app?.ui?.slider?.max, 10);
+    const stateMax = parseInt(this.app?.state?.maxLayer, 10);
+    return Number.isFinite(sliderMax) ? sliderMax : Number.isFinite(stateMax) ? stateMax : 73;
   }
 
   exportCurrentData() {
@@ -417,8 +513,8 @@ class ChartsManager {
   }
 
   async _fetchHourJson(variableId, domain, hour, signal) {
-    const id_num = String(hour).padStart(3, "0");
-    const url = `JSON/${domain}_${variableId}_${id_num}.json`;
+    const idNum = String(hour).padStart(3, "0");
+    const url = `JSON/${domain}_${variableId}_${idNum}.json`;
     try {
       if (this.app?._cachedFetch) {
         return await this.app._cachedFetch(url, { signal });
@@ -433,6 +529,10 @@ class ChartsManager {
 
   _timestampForHour(hour, data) {
     const meta = data?.metadata;
+    if (meta?.date_time) {
+      const parsed = this._parseMetadataDate(meta.date_time);
+      if (!isNaN(parsed)) return parsed.toISOString();
+    }
     if (meta?.start_date) {
       const base = new Date(meta.start_date);
       if (!isNaN(base)) {
@@ -444,6 +544,16 @@ class ChartsManager {
     base.setMinutes(0, 0, 0);
     base.setHours(base.getHours() + (hour - 1));
     return base.toISOString();
+  }
+
+  _parseMetadataDate(value) {
+    if (value instanceof Date) return value;
+    const parts = String(value).trim().split(" ");
+    if (parts.length >= 2 && parts[0].includes("/")) {
+      const dateParts = parts[0].split("/").reverse().join("-");
+      return new Date(`${dateParts} ${parts[1]}`);
+    }
+    return new Date(value);
   }
 
   _quickDist(lat1, lng1, lat2, lng2) {
@@ -477,3 +587,5 @@ class ChartsManager {
     );
   }
 }
+
+window.ChartsManager = ChartsManager;
